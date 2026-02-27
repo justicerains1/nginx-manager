@@ -19,6 +19,12 @@ NGINX_MANAGER_VERSION=v0.1.5-alpha \
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/justicerains1/nginx-manager/master/install.sh)"
 ```
 
+查看可用版本（Release Tag）：
+
+```bash
+curl -fsSL https://api.github.com/repos/justicerains1/nginx-manager/releases | grep tag_name
+```
+
 ## 可选参数
 
 - `NGINX_MANAGER_VERSION`：程序版本（如 `v0.1.5-alpha`）

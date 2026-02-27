@@ -82,25 +82,55 @@ resolve_latest_alpha_version() {
   local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30"
   local api_proxy_url
   api_proxy_url="$(apply_proxy_url "${api_url}")"
+  local tmp_json
+  tmp_json="$(mktemp)"
 
-  local body=""
-  body="$(curl -fsSL "${api_proxy_url}" 2>/dev/null || true)"
-  if [[ -z "${body}" ]]; then
-    body="$(curl -fsSL "${api_url}" 2>/dev/null || true)"
-  fi
-  if [[ -z "${body}" ]]; then
-    echo "Failed to query GitHub Releases API."
-    exit 1
+  if ! curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: nginx-manager-installer" "${api_proxy_url}" -o "${tmp_json}" 2>/dev/null; then
+    curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: nginx-manager-installer" "${api_url}" -o "${tmp_json}" 2>/dev/null || {
+      echo "Failed to query GitHub Releases API."
+      rm -f "${tmp_json}"
+      exit 1
+    }
   fi
 
   local tag=""
-  tag="$(printf "%s" "${body}" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | grep -m1 "alpha" || true)"
+  tag="$(python3 - "${tmp_json}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+p = Path(sys.argv[1])
+try:
+    data = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+if not isinstance(data, list):
+    print("")
+    raise SystemExit(0)
+
+for rel in data:
+    if not isinstance(rel, dict):
+        continue
+    if rel.get("draft") is True:
+        continue
+    tag = str(rel.get("tag_name", "")).strip()
+    if "alpha" in tag:
+        print(tag)
+        raise SystemExit(0)
+
+print("")
+PY
+)"
+
+  rm -f "${tmp_json}"
   if [[ -z "${tag}" ]]; then
     echo "No alpha release tag found in repository ${GITHUB_REPO}."
     echo "Please set NGINX_MANAGER_VERSION manually."
     exit 1
   fi
-  VERSION="${tag}"
+  VERSION="$(echo "${tag}" | tr -d '[:space:]')"
 }
 
 install_base_deps() {
