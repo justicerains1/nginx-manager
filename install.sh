@@ -24,6 +24,8 @@ CERTBOT_VERSION="${CERTBOT_VERSION:-}"
 # Example: https://down.avi.gs/
 # Disable: DOWNLOAD_PROXY_PREFIX=""
 DOWNLOAD_PROXY_PREFIX="${DOWNLOAD_PROXY_PREFIX:-https://down.avi.gs/}"
+# Ref for downloading install assets (scripts and systemd files)
+INSTALL_ASSET_REF="${NGINX_MANAGER_INSTALL_REF:-master}"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Please run as root."
@@ -76,6 +78,11 @@ build_download_url() {
   local arch="$1"
   local asset_name="${APP_NAME}-linux-${arch}.tar.gz"
   echo "https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${asset_name}"
+}
+
+build_raw_file_url() {
+  local file_path="$1"
+  echo "https://raw.githubusercontent.com/${GITHUB_REPO}/${INSTALL_ASSET_REF}/${file_path}"
 }
 
 resolve_latest_alpha_version() {
@@ -277,6 +284,24 @@ download_binary() {
   fi
 }
 
+download_repo_file() {
+  local file_path="$1"
+  local out_path="$2"
+  local raw_url
+  raw_url="$(build_raw_file_url "${file_path}")"
+  local proxy_url
+  proxy_url="$(apply_proxy_url "${raw_url}")"
+
+  if ! curl -fsSL "${proxy_url}" -o "${out_path}" 2>/dev/null; then
+    curl -fsSL "${raw_url}" -o "${out_path}" 2>/dev/null || {
+      echo "Failed to download file: ${file_path}"
+      echo "Tried: ${proxy_url}"
+      echo "Fallback: ${raw_url}"
+      exit 1
+    }
+  fi
+}
+
 configure_firewall() {
   if command -v ufw >/dev/null 2>&1; then
     ufw allow 80/tcp || true
@@ -325,7 +350,13 @@ mkdir -p "${INSTALL_DIR}/scripts"
 echo "[6/12] Installing binaries..."
 cp "${BINARY_IN_TMP}" "${BIN_PATH}"
 chmod +x "${BIN_PATH}"
-cp "./scripts/renew-certs.sh" "${INSTALL_DIR}/scripts/renew-certs.sh"
+
+download_repo_file "scripts/renew-certs.sh" "${TMP_DIR}/renew-certs.sh"
+download_repo_file "deploy/nginx-manager.service" "${TMP_DIR}/nginx-manager.service"
+download_repo_file "deploy/nginx-manager-cert-renew.service" "${TMP_DIR}/nginx-manager-cert-renew.service"
+download_repo_file "deploy/nginx-manager-cert-renew.timer" "${TMP_DIR}/nginx-manager-cert-renew.timer"
+
+cp "${TMP_DIR}/renew-certs.sh" "${INSTALL_DIR}/scripts/renew-certs.sh"
 chmod +x "${INSTALL_DIR}/scripts/renew-certs.sh"
 
 echo "[7/12] Writing environment config..."
@@ -344,9 +375,9 @@ RUST_LOG=info
 EOF
 
 echo "[8/12] Installing systemd units..."
-cp "./deploy/nginx-manager.service" "${SYSTEMD_FILE}"
-cp "./deploy/nginx-manager-cert-renew.service" "${RENEW_SERVICE_FILE}"
-cp "./deploy/nginx-manager-cert-renew.timer" "${RENEW_TIMER_FILE}"
+cp "${TMP_DIR}/nginx-manager.service" "${SYSTEMD_FILE}"
+cp "${TMP_DIR}/nginx-manager-cert-renew.service" "${RENEW_SERVICE_FILE}"
+cp "${TMP_DIR}/nginx-manager-cert-renew.timer" "${RENEW_TIMER_FILE}"
 systemctl daemon-reload
 systemctl enable nginx-manager
 systemctl restart nginx-manager

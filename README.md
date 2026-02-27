@@ -32,6 +32,7 @@ curl -fsSL https://api.github.com/repos/justicerains1/nginx-manager/releases | g
 - `CERTBOT_VERSION`：Certbot 版本（pip 安装）
 - `NGINX_MANAGER_GITHUB_REPO`：程序仓库（默认 `justicerains1/nginx-manager`）
 - `DOWNLOAD_PROXY_PREFIX`：下载加速前缀（默认 `https://down.avi.gs/`）
+- `NGINX_MANAGER_INSTALL_REF`：安装附属文件来源分支/标签（默认 `master`）
 
 关闭下载加速：
 
