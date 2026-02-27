@@ -5,6 +5,15 @@ on:
     branches:
       - master
       - main
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "install.sh"
+      - "uninstall.sh"
+      - "deploy/**"
+      - "scripts/**"
+      - ".github/workflows/build-and-release.yml"
   workflow_dispatch:
 
 permissions:
