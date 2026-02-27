@@ -8,13 +8,50 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本号（仅支持 alpha，例如 v0.1.1-alpha.1）"
+        required: true
+        default: "v0.1.0-alpha.1"
 
 permissions:
   contents: write
 
 jobs:
+  meta:
+    name: 解析发布参数
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - name: 计算标签与预发布标记
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG=""
+          fi
+
+          if [ -n "${TAG}" ] && [[ "${TAG}" != *alpha* ]]; then
+            echo "当前仅允许 alpha 版本发布，收到：${TAG}"
+            exit 1
+          fi
+
+          if [ -n "${TAG}" ]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
   build:
     name: 构建 (${{ matrix.target }})
+    needs: meta
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -67,10 +104,42 @@ jobs:
           name: nginx-manager-${{ matrix.arch }}
           path: nginx-manager-linux-${{ matrix.arch }}.tar.gz
 
+  create-tag:
+    name: 创建标签（手动发布）
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 创建并推送标签
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ needs.meta.outputs.tag }}
+        shell: bash
+        run: |
+          if [ "${EVENT_NAME}" != "workflow_dispatch" ]; then
+            echo "非手动发布场景，跳过创建标签。"
+            exit 0
+          fi
+
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            echo "本地标签已存在：${TAG}"
+          elif git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "远程标签已存在：${TAG}"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "${TAG}" -m "${TAG}"
+            git push origin "${TAG}"
+          fi
+
   release:
     name: 发布 Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [meta, build, create-tag]
+    if: needs.meta.outputs.tag != ''
     runs-on: ubuntu-latest
     steps:
       - name: 下载 x86_64 产物
@@ -88,6 +157,8 @@ jobs:
       - name: 创建并上传 Release 资产
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          prerelease: ${{ needs.meta.outputs.prerelease }}
           files: |
             artifacts/nginx-manager-linux-x86_64.tar.gz
             artifacts/nginx-manager-linux-aarch64.tar.gz
