@@ -53,6 +53,11 @@ sudo ./install.sh
 - 指定 GitHub 仓库：`NGINX_MANAGER_GITHUB_REPO=组织名/仓库名 sudo ./install.sh`
 - 也支持完整仓库地址：`NGINX_MANAGER_GITHUB_REPO=https://github.com/justicerains1/nginx-manager.git sudo ./install.sh`
 
+自动发布说明（GitHub Actions）：
+
+- 手动触发工作流时，输入基础版本号（如 `v0.1.1`），系统会自动生成并发布 `v0.1.1-alpha.<运行号>`
+- 若你输入已包含 `alpha` 的版本号，则按你输入的版本号发布
+
 Release 产物命名要求：
 
 - `nginx-manager-linux-x86_64.tar.gz`

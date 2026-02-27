@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本号（仅支持 alpha，例如 v0.1.1-alpha.1）"
+        description: "基础版本号（自动加 alpha，例如 v0.1.1）"
         required: true
-        default: "v0.1.0-alpha.1"
+        default: "v0.1.0"
 
 permissions:
   contents: write
@@ -30,7 +30,15 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.version }}"
+            RAW="${{ github.event.inputs.version }}"
+            if [[ "${RAW}" != v* ]]; then
+              RAW="v${RAW}"
+            fi
+            if [[ "${RAW}" == *alpha* ]]; then
+              TAG="${RAW}"
+            else
+              TAG="${RAW}-alpha.${GITHUB_RUN_NUMBER}"
+            fi
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
