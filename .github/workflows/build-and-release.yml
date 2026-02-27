@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: alpha-release
+  cancel-in-progress: false
+
 jobs:
   meta:
     name: calc-next-alpha-tag
@@ -128,6 +132,7 @@ jobs:
   release:
     name: release
     needs: [meta, build, create-tag]
+    if: ${{ needs.build.result == 'success' && needs.create-tag.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: download x86_64
@@ -147,6 +152,8 @@ jobs:
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           prerelease: ${{ needs.meta.outputs.prerelease }}
+          make_latest: false
+          generate_release_notes: true
           files: |
             artifacts/nginx-manager-linux-x86_64.tar.gz
             artifacts/nginx-manager-linux-aarch64.tar.gz
