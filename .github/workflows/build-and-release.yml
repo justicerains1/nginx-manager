@@ -1,64 +1,53 @@
-name: 构建与发布
+name: build-and-release
 
 on:
   push:
     branches:
       - master
       - main
-    tags:
-      - "v*"
   workflow_dispatch:
-    inputs:
-      version:
-        description: "基础版本号（自动加 alpha，例如 v0.1.1）"
-        required: true
-        default: "v0.1.0"
 
 permissions:
   contents: write
 
 jobs:
   meta:
-    name: 解析发布参数
+    name: calc-next-alpha-tag
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
-      - name: 计算标签与预发布标记
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: calc tag v0.1.x-alpha
         id: meta
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            RAW="${{ github.event.inputs.version }}"
-            if [[ "${RAW}" != v* ]]; then
-              RAW="v${RAW}"
-            fi
-            if [[ "${RAW}" == *alpha* ]]; then
-              TAG="${RAW}"
-            else
-              TAG="${RAW}-alpha.${GITHUB_RUN_NUMBER}"
-            fi
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-          else
-            TAG=""
+          set -euo pipefail
+          LAST_PATCH="$(
+            git ls-remote --tags origin \
+              'refs/tags/v0.1.*-alpha' \
+              | awk -F'/' '{print $3}' \
+              | sed -n 's/^v0\.1\.\([0-9]\+\)-alpha$/\1/p' \
+              | sort -n \
+              | tail -1
+          )"
+          if [ -z "${LAST_PATCH}" ]; then
+            LAST_PATCH=0
           fi
+          NEXT_PATCH=$((LAST_PATCH + 1))
+          TAG="v0.1.${NEXT_PATCH}-alpha"
 
-          if [ -n "${TAG}" ] && [[ "${TAG}" != *alpha* ]]; then
-            echo "当前仅允许 alpha 版本发布，收到：${TAG}"
-            exit 1
-          fi
-
-          if [ -n "${TAG}" ]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          echo "next tag: ${TAG}"
 
   build:
-    name: 构建 (${{ matrix.target }})
+    name: build-${{ matrix.target }}
     needs: meta
     runs-on: ubuntu-latest
     strategy:
@@ -69,17 +58,16 @@ jobs:
             arch: x86_64
           - target: aarch64-unknown-linux-gnu
             arch: aarch64
-
     steps:
-      - name: 检出代码
+      - name: checkout
         uses: actions/checkout@v4
 
-      - name: 安装 Rust
+      - name: setup rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: 安装系统依赖
+      - name: install deps
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
@@ -87,11 +75,11 @@ jobs:
             sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
           fi
 
-      - name: 编译（x86_64）
+      - name: build x86_64
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
-      - name: 编译（aarch64）
+      - name: build aarch64
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -99,70 +87,62 @@ jobs:
           AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
         run: cargo build --release --target aarch64-unknown-linux-gnu
 
-      - name: 打包产物
+      - name: pack
         shell: bash
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/nginx-manager dist/nginx-manager
           tar -czf nginx-manager-linux-${{ matrix.arch }}.tar.gz -C dist nginx-manager
 
-      - name: 上传构建产物
+      - name: upload
         uses: actions/upload-artifact@v4
         with:
           name: nginx-manager-${{ matrix.arch }}
           path: nginx-manager-linux-${{ matrix.arch }}.tar.gz
 
   create-tag:
-    name: 创建标签（手动发布）
+    name: create-tag
     needs: meta
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
+      - name: checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 创建并推送标签
+      - name: create and push tag
         env:
-          EVENT_NAME: ${{ github.event_name }}
           TAG: ${{ needs.meta.outputs.tag }}
         shell: bash
         run: |
-          if [ "${EVENT_NAME}" != "workflow_dispatch" ]; then
-            echo "非手动发布场景，跳过创建标签。"
+          set -euo pipefail
+          if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "tag exists: ${TAG}"
             exit 0
           fi
-
-          if git rev-parse "${TAG}" >/dev/null 2>&1; then
-            echo "本地标签已存在：${TAG}"
-          elif git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
-            echo "远程标签已存在：${TAG}"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag -a "${TAG}" -m "${TAG}"
-            git push origin "${TAG}"
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "${TAG}"
+          git push origin "${TAG}"
 
   release:
-    name: 发布 Release
+    name: release
     needs: [meta, build, create-tag]
-    if: needs.meta.outputs.tag != ''
     runs-on: ubuntu-latest
     steps:
-      - name: 下载 x86_64 产物
+      - name: download x86_64
         uses: actions/download-artifact@v4
         with:
           name: nginx-manager-x86_64
           path: artifacts
 
-      - name: 下载 aarch64 产物
+      - name: download aarch64
         uses: actions/download-artifact@v4
         with:
           name: nginx-manager-aarch64
           path: artifacts
 
-      - name: 创建并上传 Release 资产
+      - name: publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
