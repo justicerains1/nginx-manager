@@ -22,10 +22,8 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             arch: x86_64
-            cc: gcc
           - target: aarch64-unknown-linux-gnu
             arch: aarch64
-            cc: aarch64-linux-gnu-gcc
 
     steps:
       - name: 检出代码
@@ -44,10 +42,17 @@ jobs:
             sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
           fi
 
-      - name: 编译
+      - name: 编译（x86_64）
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: 编译（aarch64）
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         env:
-          CC: ${{ matrix.cc }}
-        run: cargo build --release --target ${{ matrix.target }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
+        run: cargo build --release --target aarch64-unknown-linux-gnu
 
       - name: 打包产物
         shell: bash
