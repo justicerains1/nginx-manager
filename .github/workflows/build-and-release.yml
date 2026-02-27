@@ -14,6 +14,12 @@ concurrency:
   group: alpha-release
   cancel-in-progress: false
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
+
 jobs:
   meta:
     name: calc-next-alpha-tag
@@ -66,10 +72,21 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
+      - name: setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.5
+
       - name: setup rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust
+          shared-key: ${{ matrix.target }}
+          cache-targets: true
+          cache-all-crates: true
 
       - name: install deps
         run: |
@@ -81,7 +98,7 @@ jobs:
 
       - name: build x86_64
         if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: cargo build --locked --release --target x86_64-unknown-linux-gnu
 
       - name: build aarch64
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -89,7 +106,11 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
           AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
-        run: cargo build --release --target aarch64-unknown-linux-gnu
+        run: cargo build --locked --release --target aarch64-unknown-linux-gnu
+
+      - name: sccache stats
+        shell: bash
+        run: sccache --show-stats || true
 
       - name: pack
         shell: bash

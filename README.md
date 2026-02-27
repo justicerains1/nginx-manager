@@ -56,6 +56,12 @@ Release 产物命名要求：
 
 - `https://github.com/justicerains1/nginx-manager/releases`
 
+## CI 提速策略（已启用）
+
+- `sccache` 编译缓存
+- `Swatinem/rust-cache` 缓存依赖与目标目录
+- `cargo build --locked` 保持构建稳定并减少重复解析
+
 ## 卸载
 
 ```bash
