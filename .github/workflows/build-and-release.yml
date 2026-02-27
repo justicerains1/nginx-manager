@@ -17,8 +17,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  RUSTC_WRAPPER: sccache
-  SCCACHE_GHA_ENABLED: "true"
 
 jobs:
   meta:
@@ -73,7 +71,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: setup sccache
+        id: sccache
+        continue-on-error: true
         uses: mozilla-actions/sccache-action@v0.0.5
+
+      - name: enable sccache env
+        if: steps.sccache.outcome == 'success'
+        shell: bash
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@stable
@@ -98,7 +105,20 @@ jobs:
 
       - name: build x86_64
         if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: cargo build --locked --release --target x86_64-unknown-linux-gnu
+        shell: bash
+        run: |
+          set +e
+          cargo build --locked --release --target x86_64-unknown-linux-gnu
+          code=$?
+          set -e
+          if [ $code -ne 0 ] && [ -n "${RUSTC_WRAPPER:-}" ]; then
+            echo "sccache 构建失败，回退普通构建..."
+            unset RUSTC_WRAPPER
+            unset SCCACHE_GHA_ENABLED
+            cargo build --locked --release --target x86_64-unknown-linux-gnu
+          elif [ $code -ne 0 ]; then
+            exit $code
+          fi
 
       - name: build aarch64
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -106,9 +126,23 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
           AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
-        run: cargo build --locked --release --target aarch64-unknown-linux-gnu
+        shell: bash
+        run: |
+          set +e
+          cargo build --locked --release --target aarch64-unknown-linux-gnu
+          code=$?
+          set -e
+          if [ $code -ne 0 ] && [ -n "${RUSTC_WRAPPER:-}" ]; then
+            echo "sccache 构建失败，回退普通构建..."
+            unset RUSTC_WRAPPER
+            unset SCCACHE_GHA_ENABLED
+            cargo build --locked --release --target aarch64-unknown-linux-gnu
+          elif [ $code -ne 0 ]; then
+            exit $code
+          fi
 
       - name: sccache stats
+        if: always()
         shell: bash
         run: sccache --show-stats || true
 
