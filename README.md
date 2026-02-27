@@ -21,6 +21,16 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/justicerains1/nginx-mana
 - `NGINX_VERSION`：Nginx 版本（官方仓库安装）
 - `CERTBOT_VERSION`：Certbot 版本（pip 安装）
 - `NGINX_MANAGER_GITHUB_REPO`：程序仓库（默认 `justicerains1/nginx-manager`）
+- `DOWNLOAD_PROXY_PREFIX`：下载加速前缀（默认 `https://down.avi.gs/`）
+
+默认下载行为：
+
+- 安装脚本下载构建产物时会自动走：
+  - `https://down.avi.gs/https://github.com/...`
+- 如需关闭代理加速：
+```bash
+DOWNLOAD_PROXY_PREFIX="" bash -c "$(curl -fsSL https://raw.githubusercontent.com/justicerains1/nginx-manager/master/install.sh)"
+```
 
 ## 一条命令卸载
 
