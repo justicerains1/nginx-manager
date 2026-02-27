@@ -1,0 +1,18 @@
+[Unit]
+Description=Nginx Manager Web 管理服务
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/nginx-manager
+EnvironmentFile=/etc/nginx-manager/env
+ExecStart=/opt/nginx-manager/nginx-manager
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/nginx-manager/app.log
+StandardError=append:/var/log/nginx-manager/app.log
+
+[Install]
+WantedBy=multi-user.target

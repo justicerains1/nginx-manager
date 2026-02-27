@@ -1,0 +1,9 @@
+[Unit]
+Description=Nginx Manager 证书自动续期任务
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/nginx-manager/scripts/renew-certs.sh

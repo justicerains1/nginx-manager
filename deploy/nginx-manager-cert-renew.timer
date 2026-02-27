@@ -1,0 +1,10 @@
+[Unit]
+Description=每天自动检查并续期证书（Nginx Manager）
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
