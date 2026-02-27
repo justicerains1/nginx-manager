@@ -388,7 +388,23 @@ echo "[9/12] Configuring firewall ports..."
 configure_firewall
 
 echo "[10/12] Verifying service..."
-systemctl --no-pager --full status nginx-manager >/dev/null
+ok="false"
+for _ in $(seq 1 10); do
+  if systemctl is-active --quiet nginx-manager; then
+    ok="true"
+    break
+  fi
+  sleep 2
+done
+
+if [[ "${ok}" != "true" ]]; then
+  echo "nginx-manager service is not active."
+  echo "---- systemctl status nginx-manager ----"
+  systemctl --no-pager --full status nginx-manager || true
+  echo "---- journalctl -u nginx-manager (last 80 lines) ----"
+  journalctl -u nginx-manager -n 80 --no-pager || true
+  exit 1
+fi
 
 echo "[11/12] Cleaning temp files..."
 rm -rf "${TMP_DIR}"
