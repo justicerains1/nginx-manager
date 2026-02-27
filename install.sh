@@ -11,6 +11,7 @@ RENEW_SERVICE_FILE="/etc/systemd/system/nginx-manager-cert-renew.service"
 RENEW_TIMER_FILE="/etc/systemd/system/nginx-manager-cert-renew.timer"
 BIN_PATH="${INSTALL_DIR}/nginx-manager"
 GITHUB_REPO="${NGINX_MANAGER_GITHUB_REPO:-justicerains1/nginx-manager}"
+# If empty or "latest", the script resolves the newest alpha tag automatically.
 VERSION="${NGINX_MANAGER_VERSION:-latest}"
 TMP_DIR="/tmp/nginx-manager-install"
 BINARY_IN_TMP=""
@@ -74,11 +75,32 @@ apply_proxy_url() {
 build_download_url() {
   local arch="$1"
   local asset_name="${APP_NAME}-linux-${arch}.tar.gz"
-  if [[ "${VERSION}" == "latest" ]]; then
-    echo "https://github.com/${GITHUB_REPO}/releases/latest/download/${asset_name}"
-  else
-    echo "https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${asset_name}"
+  echo "https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${asset_name}"
+}
+
+resolve_latest_alpha_version() {
+  local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30"
+  local api_proxy_url
+  api_proxy_url="$(apply_proxy_url "${api_url}")"
+
+  local body=""
+  body="$(curl -fsSL "${api_proxy_url}" 2>/dev/null || true)"
+  if [[ -z "${body}" ]]; then
+    body="$(curl -fsSL "${api_url}" 2>/dev/null || true)"
   fi
+  if [[ -z "${body}" ]]; then
+    echo "Failed to query GitHub Releases API."
+    exit 1
+  fi
+
+  local tag=""
+  tag="$(printf "%s" "${body}" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | grep -m1 "alpha" || true)"
+  if [[ -z "${tag}" ]]; then
+    echo "No alpha release tag found in repository ${GITHUB_REPO}."
+    echo "Please set NGINX_MANAGER_VERSION manually."
+    exit 1
+  fi
+  VERSION="${tag}"
 }
 
 install_base_deps() {
@@ -193,6 +215,10 @@ download_binary() {
   if [[ "${GITHUB_REPO}" != */* ]]; then
     echo "Invalid GitHub repository format. Use owner/repo or full URL."
     exit 1
+  fi
+
+  if [[ -z "${VERSION}" || "${VERSION}" == "latest" ]]; then
+    resolve_latest_alpha_version
   fi
 
   local url
